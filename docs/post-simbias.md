@@ -1,0 +1,563 @@
+A warning about data-driven simulations: inferences about reaction time
+distributions
+================
+Guillaume A. Rousselet
+2025-09-24
+
+- [Dependencies](#dependencies)
+- [Illustrate random sample of
+  participants](#illustrate-random-sample-of-participants)
+  - [Create data frame](#create-data-frame)
+  - [Make figure](#make-figure)
+- [Summary results for all
+  participants](#summary-results-for-all-participants)
+  - [Compute trimmed means](#compute-trimmed-means)
+  - [Illustrate results](#illustrate-results)
+- [Effect of population size on sampling
+  distributions](#effect-of-population-size-on-sampling-distributions)
+  - [Sampling distributions](#sampling-distributions)
+  - [Power](#power)
+  - [Power for the full sample size](#power-for-the-full-sample-size)
+  - [Summary figure](#summary-figure)
+
+# Dependencies
+
+``` r
+library(ggplot2)
+source("./functions/theme_gar.txt") # define ggplot theme
+source("./functions/trimpval.txt") # get one-sample t-test on trimmed means
+source("./functions/functions.txt")
+library(tibble)
+library(cowplot)
+library(rogme) # this package is not on CRAN, follow these steps to install it:
+# install.packages("devtools")
+# devtools::install_github("GRousselet/rogme")
+library(beepr)
+```
+
+``` r
+sessionInfo()
+```
+
+    ## R version 4.5.1 (2025-06-13)
+    ## Platform: aarch64-apple-darwin20
+    ## Running under: macOS Sequoia 15.7
+    ## 
+    ## Matrix products: default
+    ## BLAS:   /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRblas.0.dylib 
+    ## LAPACK: /Library/Frameworks/R.framework/Versions/4.5-arm64/Resources/lib/libRlapack.dylib;  LAPACK version 3.12.1
+    ## 
+    ## locale:
+    ## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+    ## 
+    ## time zone: Europe/London
+    ## tzcode source: internal
+    ## 
+    ## attached base packages:
+    ## [1] stats     graphics  grDevices utils     datasets  methods   base     
+    ## 
+    ## other attached packages:
+    ## [1] beepr_2.0     rogme_0.2.1   cowplot_1.2.0 tibble_3.3.0  ggplot2_4.0.0
+    ## 
+    ## loaded via a namespace (and not attached):
+    ##  [1] vctrs_0.6.5        cli_3.6.5          knitr_1.50         rlang_1.1.6       
+    ##  [5] xfun_0.53          generics_0.1.4     S7_0.2.0           glue_1.8.0        
+    ##  [9] htmltools_0.5.8.1  scales_1.4.0       rmarkdown_2.29     grid_4.5.1        
+    ## [13] evaluate_1.0.5     fastmap_1.2.0      yaml_2.3.10        lifecycle_1.0.4   
+    ## [17] compiler_4.5.1     dplyr_1.1.4        RColorBrewer_1.1-3 pkgconfig_2.0.3   
+    ## [21] rstudioapi_0.17.1  farver_2.1.2       digest_0.6.37      R6_2.6.1          
+    ## [25] tidyselect_1.2.1   pillar_1.11.1      magrittr_2.0.4     withr_3.0.2       
+    ## [29] tools_4.5.1        gtable_0.3.6       audio_0.1-11
+
+We use data from the [French Lexicon Project](https://osf.io/f8kc4/).
+The `.RData` dataset was created by applying the script
+`getflprtdata.Rmd` available on
+[GitHub](https://github.com/GRousselet/rogme/tree/master/data-raw). For
+convenience, the data frame containing the FLP reaction time data is
+stored in the `rogme` R package, available on
+[GitHub](https://github.com/GRousselet/rogme).
+
+``` r
+# get data - tibble = `flp`
+flp <- rogme::flp
+# columns =
+#1 = participant
+#2 = rt
+#3 = acc = accuracy 0/1
+#4 = condition = word/non-word
+
+# Determine population trimmed mean of trimmed mean differences
+tmp <- tapply(flp$rt, list(flp$participant, flp$condition), mean, trim = 0.2)
+pop.tm.diff <- mean(tmp[,2]-tmp[,1], trim = 0.2)
+pop.np <- length(unique(flp$participant))
+```
+
+N = 959 participants.
+
+# Illustrate random sample of participants
+
+## Create data frame
+
+``` r
+set.seed(3)
+# participants' indices
+p.list <- as.numeric(as.character(unique(flp$participant)))
+np <- 20
+rsamp <- sample(p.list, np, replace = FALSE)
+df <- flp[flp$participant %in% rsamp, ]
+df$participant <- as.character(df$participant)
+df$participant <- factor(df$participant, levels=unique(df$participant))
+#levels(df$condition)
+levels(df$condition) <- c("Word", "Non-Word")
+```
+
+## Make figure
+
+``` r
+p <- ggplot(df, aes(x = rt)) + theme_gar +
+  geom_line(stat = "density", aes(colour=participant), linewidth = 0.5) + 
+  scale_color_viridis_d() + 
+  scale_x_continuous(breaks=seq(0,2000,500), minor_breaks = seq(0, 2000, 250)) +
+  coord_cartesian(xlim = c(0, 2000)) +
+  theme(legend.position = "none") + 
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.minor.y = element_blank()) +
+  labs(x = "Reaction times (ms)", y = "Density") +
+  facet_grid(. ~ condition)
+p
+```
+
+![](post-simbias_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
+
+``` r
+p.20 <- p
+```
+
+The distributions are positively skewed, as expected for RT data, and
+participants tend to be slower in the non-word condition compared to the
+word condition. Usually, a single number is used to summarise each
+individual RT distribution. From 1000 values to 1, that’s some serious
+data compression! In psychology, the mean is often used, but here we use
+the 20% trimmed mean, which gives a better indication of the location of
+the typical observation and protects against the influence of outliers.
+
+# Summary results for all participants
+
+Here is the distribution across participants of trimmed mean RT for the
+word and non-word conditions and their differences.
+
+## Compute trimmed means
+
+``` r
+# get data: mean RT for every participant
+tmres <- tapply(flp$rt, list(flp$participant, flp$condition), mean, trim = 0.2)
+summary(tmres)
+```
+
+    ##       word           non-word     
+    ##  Min.   : 455.1   Min.   : 497.9  
+    ##  1st Qu.: 631.2   1st Qu.: 695.9  
+    ##  Median : 695.4   Median : 777.1  
+    ##  Mean   : 711.4   Mean   : 802.4  
+    ##  3rd Qu.: 780.4   3rd Qu.: 887.7  
+    ##  Max.   :1066.8   Max.   :1318.8
+
+## Illustrate results
+
+All distributions are skewed.
+
+``` r
+# create data frame
+df <- tibble(x = c(as.vector(tmres),tmres[,2]-tmres[,1]),
+             Condition = rep(c("Word", "Non-Word", "Difference"), each = pop.np)
+)
+df$Condition <- as.character(df$Condition)
+df$Condition <- factor(df$Condition, levels=unique(df$Condition))
+
+facet_bounds <- read.table(header=TRUE,
+text=                           
+"Condition xmin xmax breaks
+Word 0 1600 250
+Non-Word 0 1600 250
+Difference -100 500 100",
+stringsAsFactors=FALSE)
+
+ff <- with(facet_bounds,
+           data.frame(x=c(xmin,xmax),
+                      Condition=c(Condition,Condition)))
+
+ff$Condition <- keeporder(ff$Condition)
+
+# make plot
+p <- ggplot(df, aes(x = x)) + theme_gar + 
+  geom_line(stat = "density", linewidth = 1.5) + 
+  labs(x = "20% trimmed mean reaction times (ms)", y = "Density") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid.minor.y = element_blank()) +
+  facet_grid(. ~ Condition, scales = "free") + 
+  geom_blank(data=ff)
+p
+```
+
+![](post-simbias_files/figure-gfm/unnamed-chunk-7-1.png)<!-- -->
+
+``` r
+p.alltm <- p
+```
+
+96.2% of participants had a positive difference, meaning that they
+tended to be faster in the Word than the Non-Word condition.
+
+# Effect of population size on sampling distributions
+
+As described in [Burns, Fracasso & Rousselet
+(2025)](https://www.nature.com/articles/s41598-025-89257-w), data-driven
+simulations are affected by the relative difference between the
+population size and the sample size. As sample sizes get closer to the
+population size, estimation bias increases, and the sign of the bias
+depends on the effect size in the population. Let’s illustrate the
+sampling distributions.
+
+## Sampling distributions
+
+For illustration, we consider sampling distributions for different
+combinations of participant population sizes and sample sizes, using all
+the trials available for each participant. We also calculate one-sample
+t-test for 20% trimmed means, with the null value set to 60 ms.
+
+Concretely, for each participant, we calculate the 20% trimmed mean
+across all trials for each condition, and save the difference between
+the two conditions. The full size population is then defined as the
+one-sample distribution of trimmed mean differences for all
+participants.
+
+In each simulation iteration, populations of sizes 50, 100, …, 250 are
+created by sampling without replacement from the full sample size (959
+participants). Then, for each population size, experiments are simulated
+by sampling 20, 50 or 100 participants with replacement. It might seem
+strange to sample with replacement 100 participants from a population of
+50, but I’ve seen that type of over-sampling a few times. As we will see
+shortly, it is a bad idea. For each, we calculate the group 20% trimmed
+mean.
+
+``` r
+diff <- tmres[,2]-tmres[,1]
+set.seed(22222)
+nsim <- 20000
+np.seq <- c(20, 50, 100) # number of participants
+maxNP <- max(np.seq)
+npop.seq <- seq(50, 250, 50) # population size
+maxNPOP <- max(npop.seq)
+
+# group results
+sim.res <- array(NA, dim = c(nsim, length(np.seq), length(npop.seq))) 
+sim.res.pval <- sim.res
+
+for(iter in 1:nsim){
+  
+  if(iter %% 1000 == 0){
+    print(paste("Simulation ",iter," / ",nsim,"..."))
+    beep(2)
+  }
+  
+  # Sample participants without replacement to create population
+  pop.sub <- sample(diff, maxNPOP, replace=FALSE)
+  
+  for(POP in 1:length(npop.seq)){
+    
+    # downsample to current population size
+    # sample participants with replacement from population
+    samp.max <- sample(pop.sub[1:npop.seq[POP]], maxNP, replace=TRUE) 
+    
+    for(P in 1:length(np.seq)){ # for each sample size
+      sim.res[iter, P, POP] <- mean(samp.max[1:np.seq[P]], trim=0.2)
+      sim.res.pval[iter, P, POP] <- trimpval(samp.max[1:np.seq[P]], tr=0.2, null.value=60)
+    } # participants
+  } # pop size
+} # simulation iterations
+
+save(
+  nsim,
+  np.seq,
+  npop.seq,
+  sim.res,
+  sim.res.pval,
+  file = "./data/flp_sim_res_bias.RData"
+)
+
+beep(8)
+```
+
+### Results
+
+``` r
+load(file = "./data/flp_sim_res_bias.RData")
+
+alpha <- 0.05 # arbitrary cut-off
+
+v.sim.res <- as.vector(sim.res)
+
+df <- tibble(x = v.sim.res,
+             np = factor(rep(rep(np.seq, each = nsim), length(npop.seq))),
+             npop = factor(rep(npop.seq, each = nsim * length(np.seq)))
+)
+
+levels(df$np) <- c("20 participants", "50 participants", "100 participants")
+
+p <- ggplot(df, aes(x = x, colour = npop)) + theme_gar +
+      geom_vline(xintercept = pop.tm.diff) +
+      geom_line(stat = "density", linewidth = 0.75) +
+      theme(legend.position = "bottom",
+            axis.text.y = element_blank(),
+            axis.ticks.y = element_blank(),
+            panel.grid.minor.y = element_blank()) +
+      guides(colour = guide_legend(override.aes = list(linewidth = 3),
+                                   title = "Population Size")) +
+      scale_colour_viridis_d(option = "plasma", 
+                             begin = 0, end = 0.7) + 
+      facet_grid(cols = vars(np), scales = "fixed") +
+      labs(x = "Group 20% trimmed mean difference", y = "Density") +
+      coord_cartesian(xlim = c(35, 150)) + 
+      scale_x_continuous(breaks = c(50, 100, 150))
+p.biasA <- p
+p
+```
+
+![](post-simbias_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+As it should be, the spread of the sampling distributions varies
+inversely with the sample size, here the number of participants. Now,
+what is interesting, is that for a fixed sample size, we get broader
+sampling distributions for smaller populations, and the problem is worse
+if our samples are large relative to the population size – here we see a
+larger difference between population sizes 50 and 250 when taking
+samples of 100 participants rather than 20 participants. This phenomenon
+is due to the presence, in some populations, of an over-representation
+of extreme values, which are themselves more likely to be picked up when
+sampling with replacement in a simulation. As a result, we get
+exaggerated tails, with important consequences for power analyses for
+instance.
+
+## Power
+
+New simulation in which we explore more sample and population sizes.
+Inference is on the population 20% trimmed mean using a modified
+one-sample t-test.
+
+``` r
+diff <- tmres[,2]-tmres[,1]
+set.seed(22222)
+nsim <- 20000
+np.seq <- seq(10, 120, 10) # number of participants
+maxNP <- max(np.seq)
+npop.seq <- seq(50, 300, 50) # population size
+maxNPOP <- max(npop.seq)
+
+# group results
+sim.res <- array(NA, dim = c(nsim, length(np.seq), length(npop.seq))) 
+sim.res.pval <- sim.res
+
+for(iter in 1:nsim){
+  
+  if(iter %% 1000 == 0){
+    print(paste("Simulation ",iter," / ",nsim,"..."))
+    beep(2)
+  }
+  
+  # Sample participants without replacement to create population
+  pop.sub <- sample(diff, maxNPOP, replace=FALSE)
+  
+  for(POP in 1:length(npop.seq)){
+    
+    # downsample to current population size
+    # sample participants with replacement from population
+    samp.max <- sample(pop.sub[1:npop.seq[POP]], maxNP, replace=TRUE) 
+    
+    for(P in 1:length(np.seq)){ # for each sample size
+      sim.res[iter, P, POP] <- mean(samp.max[1:np.seq[P]], trim=0.2)
+      sim.res.pval[iter, P, POP] <- trimpval(samp.max[1:np.seq[P]], tr=0.2, null.value=60)
+    } # participants
+  } # pop size
+} # simulation iterations
+
+save(
+  nsim,
+  np.seq,
+  npop.seq,
+  sim.res,
+  sim.res.pval,
+  file = "./data/flp_sim_res_bias2.RData"
+)
+
+beep(8)
+```
+
+### Results
+
+Here we plot power as a function of population size, separately for each
+sample size. Alpha is set to the usual arbitrary value of 0.05.
+
+``` r
+load("./data/flp_sim_res_bias2.RData")
+
+df <- tibble(power = as.vector(apply(sim.res.pval <= 0.05, c(2,3), mean)),
+             population = rep(npop.seq, each = length(np.seq)),
+             Participant = factor(rep(np.seq, length(npop.seq)))
+             )
+
+p <- ggplot(df, aes(x=population, y=power, colour=Participant)) +
+      theme_gar +
+      geom_point() +
+      geom_line() +
+      scale_colour_viridis_d(option = "magma", 
+                             begin = 0, end = 0.9) +
+      scale_x_continuous(breaks = npop.seq) +
+      scale_y_continuous(breaks = seq(0.1,0.9,0.1)) +
+      labs(x = "Population Size", y = "Power")
+p.biasB <- p
+p
+```
+
+![](post-simbias_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+As expected, power depends on sample size, here the number of
+participants. But also notice how for each sample size, the population
+size has different effects. It is easier to see what is going on by
+focusing on the extremes: for the lowest sample size (n=10
+participants), increasing the population size lowers power. In other
+words, for this large reaction time effect, doing a data-drive
+simulation using a small sample from a small population will tend to
+over-estimate statistical power. We get the opposite effect when we
+consider a larger sample size (n=120), as now a smaller population size
+leads to power under-estimation.
+
+Alternatively, plot power as a function of sample size, separately for
+each population size. Add reference line for 83% power.
+
+``` r
+# load("./data/flp_sim_res_bias2.RData")
+
+targpow <- .83 # target power -- 83 is a prime number
+
+df <- tibble(power = as.vector(apply(sim.res.pval <= 0.05, c(2,3), mean)),
+             population = factor(rep(npop.seq, each = length(np.seq))),
+             participant = rep(np.seq, length(npop.seq))
+             )
+
+p <- ggplot(df, aes(x=participant, y=power, colour=population)) +
+      theme_gar +
+      geom_hline(yintercept = .83, linetype = "dashed") +
+      geom_point() +
+      geom_line() +
+      scale_colour_viridis_d(option = "magma", 
+                             begin = 0, end = 0.9) +
+      scale_x_continuous(breaks = np.seq) +
+      scale_y_continuous(breaks = seq(0.1,0.9,0.1)) +
+      labs(x = "Number of participants", 
+           y = "Power",
+           colour = "Population size") +
+      guides(colour = guide_legend(position = "inside")) +
+       theme(legend.key.width = unit(1.5,"cm"),
+            legend.position.inside = c(0.8,0.3),
+            legend.title = element_text(size=16),
+            legend.text = element_text(size = 14))
+p.biasC <- p
+p
+```
+
+![](post-simbias_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
+
+#### Sample size needed to reach 83% power
+
+``` r
+res <- apply(sim.res.pval <= 0.05, c(2,3), mean)
+```
+
+Number of participants needed to reach 83% power when the population
+size is 50 = 115.
+
+When the population size is 100 = 93.
+
+When the population size is 300 = 81.
+
+## Power for the full sample size
+
+Same as above but we use all the participants – no downsampling into
+smaller populations.
+
+``` r
+diff <- tmres[,2]-tmres[,1]
+set.seed(22222)
+nsim <- 20000
+np.seq <- seq(10, 120, 10) # number of participants
+maxNP <- max(np.seq)
+
+# group results
+sim.res.full.pval <- matrix(NA, nrow = nsim, ncol = length(np.seq))
+
+for(iter in 1:nsim){
+  
+  if(iter %% 1000 == 0){
+    print(paste("Simulation ",iter," / ",nsim,"..."))
+    beep(2)
+  }
+
+    # sample participants with replacement from population
+    samp.max <- sample(diff, maxNP, replace=TRUE) 
+    
+    for(P in 1:length(np.seq)){ # for each sample size
+      sim.res.full.pval[iter, P] <- trimpval(samp.max[1:np.seq[P]], tr=0.2, null.value=60)
+    } # participants
+} # simulation iterations
+
+beep(8)
+
+save(
+  nsim,
+  np.seq,
+  sim.res.full.pval,
+  file = "./data/flp_sim_res_bias3.RData"
+)
+```
+
+Get simulation results
+
+``` r
+load("./data/flp_sim_res_bias3.RData")
+res2 <- apply(sim.res.full.pval <= 0.05, 2, mean)
+```
+
+Number of participants needed to reach 83% power for the full population
+size = 78.
+
+## Summary figure
+
+``` r
+plots <- align_plots(p.biasA, p.biasB, align = 'v', axis = 'l')
+
+p.bias.bottom <- cowplot::plot_grid(plots[[2]], # p.biasB
+                   p.biasC,
+                   labels = c("B", "C"),
+                   ncol = 2,
+                   nrow = 1,
+                   label_size = 20,
+                   align = 'v',
+                   axis = 'l',
+                   hjust = -0.5,
+                   scale = 1)
+
+cowplot::plot_grid(plots[[1]], # p.biasA 
+                   p.bias.bottom,
+                   labels = c("A", ""),
+                   rel_widths = c(1, 1), 
+                   ncol = 1,
+                   nrow = 2,
+                   label_size = 20)
+
+# save figure
+ggsave(filename=('./figures/fig_flp_simbias.tiff'),width=13,height=10,dpi=300)
+```
+
+\#References
